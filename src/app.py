@@ -23,7 +23,7 @@ df = read_data(dataset)
 if df is not None:
     st.dataframe(df.head())
     col1,col2,col3,col4=st.coloumns(4)
-    scaler_type_list=['standard','minmax']
+    scaler_type_list=['standard','minmax','one hot encoder']
     
     model_dic={
         'Logistic Regression':LogisticRegression(),

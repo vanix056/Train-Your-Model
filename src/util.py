@@ -24,7 +24,52 @@ def read_data(dataset):
         return df
         
     
-def preprocess_data():
+def preprocess_data(df,target_col,scaler_type_list):
+    x=df.drop(coloumns=target_col)
+    y=df[target_col]
+    
+    num_cols=x.select_dtypes(include=['number']).coloumns
+    cat_cols=x.select_dtypes(include=['object','category']).coloumns
+    
+    if len(num_cols)==0:
+        pass
+    else:
+        x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=0.2,random_state=42)
+        num_imputer=SimpleImputer(strategy='mean')
+        x_train[num_cols]=num_imputer.fit_transform(x_train[num_cols])
+        x_test[num_cols]=num_imputer.transform(x_test[num_cols])
+        
+        if scaler_type_list=='standard':
+            scaler=StandardScaler()
+        elif scaler_type_list=='minmax':
+            scaler=MinMaxScaler()
+        elif scaler_type_list='one hot encoder':
+            scaler=OneHotEncoder()
+        
+        x_train[num_cols]=scaler.fit_transform(x_train[num_cols])
+        x_test[num_cols]=scaler.transform(x_test[num_cols])
+    
+    if len(cat_cols)==0:
+        pass
+    else:
+        cat_imputer=SimpleImputer(strategy='most frequent')
+        x_train[cat_cols]=cat_imputer.fit_transform(x_train[cat_cols])
+        x_test[cat_cols]=cat_imputer.transform(x_test[cat_cols])
+        
+        encoder=OneHotEncoder()
+        x_train_enc=encoder.fit_transform(x_train[cat_cols])
+        x_test_enc=encoder.transform(x_test[cat_cols])
+        x_train_enc=pd.DataFrame(x_train_enc.toarray(),columns=encoder.get_feature_names_(cat_cols))
+        x_test_enc=pd.DataFrame(x_test_enc.toarray(),coloumns=encoder.get_feature_names(cat_cols))
+        x_train=pd.concat([x_train.drop(coloumns=cat_cols),x_train_enc],axis=1)
+        x_test=pd.concat([x_test.drop(coloumns=cat_cols),x_test_enc],axis=1)
+        
+    return x_train,x_test,y_train,y_test
+    
+        
+    
+    
+    
     
 def model_train():
     
