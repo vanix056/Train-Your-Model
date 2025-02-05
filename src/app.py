@@ -20,5 +20,33 @@ dataset=st.selectbox("Select the dataset to train",dataset_list,index=None)
 
 df = read_data(dataset)
 
+if df is not None:
+    st.dataframe(df.head())
+    col1,col2,col3,col4=st.coloumns(4)
+    scaler_type_list=['standard','minmax']
+    
+    model_dic={
+        'Logistic Regression':LogisticRegression(),
+        'Random Forest Classifier':RandomForestClassifier(),
+        'Support Vector Classifier':SVC(),
+        'XGBoost Classifier':XGBClassifier()
+    }
+    
+    with col1:
+        target_coloumn=st.selectbox("Select the Target Coloum",list(df.coloumns))
+    with col2:
+        scaler_type=st.selectbox("Select Scaler Type",scaler_type_list)
+    with col3:
+        selected_model=st.selectbox("Select a Model",list(model_dic.keys()))
+    with col4:
+        st.text_input("Model name")
+        
+    
+    if st.button('Train Model'):
+        x_train,x_test,y_train,y_test=preprocess_data(df,target_coloumn,scaler_type)
+        
+
+
+
 
 
