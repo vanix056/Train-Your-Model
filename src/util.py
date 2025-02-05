@@ -67,11 +67,17 @@ def preprocess_data(df,target_col,scaler_type_list):
     return x_train,x_test,y_train,y_test
     
         
-    
-    
-    
-    
-def model_train():
-    
-def evaluation():
 
+def model_train(x_train,y_train,,model,model_name):
+    model.fit(x_train,y_train)
+    with open(f'{parent_dir}/trained_model/{model_name}.pkl','wb') as f:
+        pickle.dump(model,f)
+    return model
+    
+    
+def evaluation(model,x_test,y_test):
+    y_pred=model.predict(x_test)
+    acc=accuracy_score(y_test,y_pred)
+    acc=round(acc,2)
+    
+    return acc
