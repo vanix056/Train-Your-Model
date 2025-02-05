@@ -39,11 +39,16 @@ if df is not None:
     with col3:
         selected_model=st.selectbox("Select a Model",list(model_dic.keys()))
     with col4:
-        st.text_input("Model name")
+        model_name=st.text_input("Model name")
         
     
     if st.button('Train Model'):
         x_train,x_test,y_train,y_test=preprocess_data(df,target_coloumn,scaler_type)
+        model=model_dic[selected_model]
+        train=model_train(x_train,y_train,model,model_name)
+        acc=evaluation(model,x_test,y_test)
+        
+        st.success(f"Model {model_name} trained successfully with a Test Accuracy of  "+ str(acc))
         
 
 
