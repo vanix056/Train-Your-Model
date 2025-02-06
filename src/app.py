@@ -11,7 +11,7 @@ working_dir=os.path.dirname(os.path.abspath(__file__))
 parent_dir=os.path.dirname(working_dir)
 
 
-st.set_page_config(page_title='Automate ML Training',page_icon="🧠",layout="centered")
+st.set_page_config(page_title='No Code ML Training',page_icon="🧠",layout="centered")
 st.title("No Code ML Training")
 dataset_list=os.listdir(f'{parent_dir}/data')
 
