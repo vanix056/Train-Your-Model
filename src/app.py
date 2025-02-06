@@ -11,7 +11,7 @@ working_dir=os.path.dirname(os.path.abspath(__file__))
 parent_dir=os.path.dirname(working_dir)
 
 
-st.set_page_config(title="No Code ML",icon="🧠",layout="centered")
+st.set_page_config(page_title='Automate ML Training',page_icon="🧠",layout="centered")
 st.title("No Code ML Training")
 dataset_list=os.listdir(f'{parent_dir}/data')
 
@@ -22,7 +22,7 @@ df = read_data(dataset)
 
 if df is not None:
     st.dataframe(df.head())
-    col1,col2,col3,col4=st.coloumns(4)
+    col1,col2,col3,col4=st.columns(4)
     scaler_type_list=['standard','minmax','one hot encoder']
     
     model_dic={
@@ -33,7 +33,7 @@ if df is not None:
     }
     
     with col1:
-        target_coloumn=st.selectbox("Select the Target Coloum",list(df.coloumns))
+        target_coloumn=st.selectbox("Select the Target Coloum",list(df.columns))
     with col2:
         scaler_type=st.selectbox("Select Scaler Type",scaler_type_list)
     with col3:

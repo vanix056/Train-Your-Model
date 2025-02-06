@@ -25,11 +25,11 @@ def read_data(dataset):
         
     
 def preprocess_data(df,target_col,scaler_type_list):
-    x=df.drop(coloumns=target_col)
+    x=df.drop(columns=target_col)
     y=df[target_col]
     
-    num_cols=x.select_dtypes(include=['number']).coloumns
-    cat_cols=x.select_dtypes(include=['object','category']).coloumns
+    num_cols=x.select_dtypes(include=['number']).columns
+    cat_cols=x.select_dtypes(include=['object','category']).columns
     
     if len(num_cols)==0:
         pass
@@ -43,7 +43,7 @@ def preprocess_data(df,target_col,scaler_type_list):
             scaler=StandardScaler()
         elif scaler_type_list=='minmax':
             scaler=MinMaxScaler()
-        elif scaler_type_list='one hot encoder':
+        elif scaler_type_list=='one hot encoder':
             scaler=OneHotEncoder()
         
         x_train[num_cols]=scaler.fit_transform(x_train[num_cols])
@@ -60,15 +60,15 @@ def preprocess_data(df,target_col,scaler_type_list):
         x_train_enc=encoder.fit_transform(x_train[cat_cols])
         x_test_enc=encoder.transform(x_test[cat_cols])
         x_train_enc=pd.DataFrame(x_train_enc.toarray(),columns=encoder.get_feature_names_(cat_cols))
-        x_test_enc=pd.DataFrame(x_test_enc.toarray(),coloumns=encoder.get_feature_names(cat_cols))
-        x_train=pd.concat([x_train.drop(coloumns=cat_cols),x_train_enc],axis=1)
-        x_test=pd.concat([x_test.drop(coloumns=cat_cols),x_test_enc],axis=1)
+        x_test_enc=pd.DataFrame(x_test_enc.toarray(),columns=encoder.get_feature_names(cat_cols))
+        x_train=pd.concat([x_train.drop(columns=cat_cols),x_train_enc],axis=1)
+        x_test=pd.concat([x_test.drop(columns=cat_cols),x_test_enc],axis=1)
         
     return x_train,x_test,y_train,y_test
     
         
 
-def model_train(x_train,y_train,,model,model_name):
+def model_train(x_train,y_train,model,model_name):
     model.fit(x_train,y_train)
     with open(f'{parent_dir}/trained_model/{model_name}.pkl','wb') as f:
         pickle.dump(model,f)
