@@ -1,4 +1,3 @@
-# util.py
 import os
 import pickle
 import pandas as pd
@@ -6,90 +5,96 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import GradientBoostingClassifier
-
+# Determine working directories (adjust if needed for your project structure)
 working_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(working_dir)
 
-
-def read_data(file):
-    """Reads data from a file (CSV or Excel)."""
-    try:
-        df = pd.read_csv(file)
+# --- (Optional) Data Reading Function ---
+def read_data(dataset):
+    """
+    Reads CSV or Excel data given a filename.
+    (Not used when uploading files via Streamlit.)
+    """
+    data_path = os.path.join(parent_dir, "data", dataset)
+    if data_path.endswith('.csv'):
+        df = pd.read_csv(data_path)
         return df
-    except Exception as e:
-        try:
-            df = pd.read_excel(file)
-            return df
-        except Exception as e:
-            print(f"Error reading file: {e}")
-            return None
+    elif data_path.endswith(('.xlsx', '.xls')):
+        df = pd.read_excel(data_path)
+        return df
 
-
+# --- Data Preprocessing Function ---
 def preprocess_data(df, target_col, scaler_type):
-    """Preprocesses the data: handles missing values, splits data, and scales numerical features."""
-    x = df.drop(columns=target_col)
+    """
+    Preprocess the DataFrame by splitting into train/test,
+    imputing missing values, scaling numeric columns, and one-hot encoding categorical columns.
+    """
+    # Separate features and target
+    X = df.drop(columns=[target_col])
     y = df[target_col]
-
-    num_cols = x.select_dtypes(include=['number']).columns
-    cat_cols = x.select_dtypes(include=['object', 'category']).columns
-
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
-
-    # Numerical column processing
+    
+    # Identify numeric and categorical columns
+    num_cols = X.select_dtypes(include=["number"]).columns
+    cat_cols = X.select_dtypes(include=["object", "category"]).columns
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Process numeric features
     if len(num_cols) > 0:
-        num_imputer = SimpleImputer(strategy='mean')
-        x_train[num_cols] = num_imputer.fit_transform(x_train[num_cols])
-        x_test[num_cols] = num_imputer.transform(x_test[num_cols])
-
-        if scaler_type == 'standard':
+        num_imputer = SimpleImputer(strategy="mean")
+        X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
+        X_test[num_cols] = num_imputer.transform(X_test[num_cols])
+        
+        if scaler_type == "standard":
             scaler = StandardScaler()
-        elif scaler_type == 'minmax':
+            X_train[num_cols] = scaler.fit_transform(X_train[num_cols])
+            X_test[num_cols] = scaler.transform(X_test[num_cols])
+        elif scaler_type == "minmax":
             scaler = MinMaxScaler()
-        # One-Hot Encoding for numerical features is not typical; skipping
-        else:
-            scaler = None  # No scaling
-
-        if scaler:  # Apply scaler only if it's defined
-            x_train[num_cols] = scaler.fit_transform(x_train[num_cols])
-            x_test[num_cols] = scaler.transform(x_test[num_cols])
-
-    # Categorical column processing
+            X_train[num_cols] = scaler.fit_transform(X_train[num_cols])
+            X_test[num_cols] = scaler.transform(X_test[num_cols])
+        # If "none" is selected, no scaling is performed.
+    
+    # Process categorical features
     if len(cat_cols) > 0:
-        cat_imputer = SimpleImputer(strategy='most_frequent')
-        x_train[cat_cols] = cat_imputer.fit_transform(x_train[cat_cols])
-        x_test[cat_cols] = cat_imputer.transform(x_test[cat_cols])
+        cat_imputer = SimpleImputer(strategy="most_frequent")
+        X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
+        X_test[cat_cols] = cat_imputer.transform(X_test[cat_cols])
+        
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
+        X_train_enc = pd.DataFrame(encoder.fit_transform(X_train[cat_cols]),
+                                   columns=encoder.get_feature_names_out(cat_cols),
+                                   index=X_train.index)
+        X_test_enc = pd.DataFrame(encoder.transform(X_test[cat_cols]),
+                                  columns=encoder.get_feature_names_out(cat_cols),
+                                  index=X_test.index)
+        # Drop original categorical columns and concat encoded ones
+        X_train = pd.concat([X_train.drop(columns=cat_cols), X_train_enc], axis=1)
+        X_test = pd.concat([X_test.drop(columns=cat_cols), X_test_enc], axis=1)
+        
+    return X_train, X_test, y_train, y_test
 
-        encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
-        encoder.fit(x_train[cat_cols])
-        x_train_enc = encoder.transform(x_train[cat_cols])
-        x_test_enc = encoder.transform(x_test[cat_cols])
-
-        x_train_enc = pd.DataFrame(x_train_enc, index=x_train.index,
-                                     columns=encoder.get_feature_names_out(cat_cols))
-        x_test_enc = pd.DataFrame(x_test_enc, index=x_test.index,
-                                    columns=encoder.get_feature_names_out(cat_cols))
-
-        x_train = pd.concat([x_train.drop(columns=cat_cols), x_train_enc], axis=1)
-        x_test = pd.concat([x_test.drop(columns=cat_cols), x_test_enc], axis=1)
-
-    return x_train, x_test, y_train, y_test
-
-
+# --- Model Training Function ---
 def model_train(x_train, y_train, model, model_name):
-    """Trains the given model and saves it to a file."""
+    """
+    Train the model on training data and save it as a pickle file.
+    """
     model.fit(x_train, y_train)
-    model_path = os.path.join(parent_dir, 'trained_model', f'{model_name}.pkl')
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)  # Ensure directory exists
+    # Ensure the trained_model directory exists
+    model_dir = os.path.join(parent_dir, "trained_model")
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    model_path = os.path.join(model_dir, f"{model_name}.pkl")
     with open(model_path, 'wb') as f:
         pickle.dump(model, f)
     return model
 
-
+# --- Model Evaluation Function ---
 def evaluation(model, x_test, y_test):
-    """Evaluates the model and returns the accuracy."""
+    """
+    Evaluate the trained model on the test set and return the accuracy.
+    """
     y_pred = model.predict(x_test)
     acc = accuracy_score(y_test, y_pred)
-    acc = round(acc, 2)
-    return acc
+    return round(acc, 2)
