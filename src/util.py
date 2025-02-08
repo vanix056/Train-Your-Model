@@ -1,100 +1,78 @@
 import os
 import pickle
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score
-# Determine working directories (adjust if needed for your project structure)
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 working_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(working_dir)
 
-# --- (Optional) Data Reading Function ---
-def read_data(dataset):
-    """
-    Reads CSV or Excel data given a filename.
-    (Not used when uploading files via Streamlit.)
-    """
-    data_path = os.path.join(parent_dir, "data", dataset)
+def read_data(filename):
+    data_path = f'{parent_dir}/data/{filename}'
     if data_path.endswith('.csv'):
-        df = pd.read_csv(data_path)
-        return df
+        return pd.read_csv(data_path)
     elif data_path.endswith(('.xlsx', '.xls')):
-        df = pd.read_excel(data_path)
-        return df
+        return pd.read_excel(data_path)
+    return None
 
-# --- Data Preprocessing Function ---
-def preprocess_data(df, target_col, scaler_type):
-    """
-    Preprocess the DataFrame by splitting into train/test,
-    imputing missing values, scaling numeric columns, and one-hot encoding categorical columns.
-    """
+def read_uploaded_file(uploaded_file):
+    if uploaded_file.name.endswith('.csv'):
+        return pd.read_csv(uploaded_file)
+    elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+        return pd.read_excel(uploaded_file)
+    return None
+
+def preprocess_data(df, target_col, scaler_type='None'):
     # Separate features and target
     X = df.drop(columns=[target_col])
     y = df[target_col]
     
-    # Identify numeric and categorical columns
-    num_cols = X.select_dtypes(include=["number"]).columns
-    cat_cols = X.select_dtypes(include=["object", "category"]).columns
+    # Identify column types
+    numeric_features = X.select_dtypes(include=['number']).columns
+    categorical_features = X.select_dtypes(include=['object', 'category']).columns
     
-    # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Create transformers
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler() if scaler_type == 'Standard Scaler' 
+                  else MinMaxScaler() if scaler_type == 'MinMax Scaler' 
+                  else 'passthrough')
+    ])
     
-    # Process numeric features
-    if len(num_cols) > 0:
-        num_imputer = SimpleImputer(strategy="mean")
-        X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
-        X_test[num_cols] = num_imputer.transform(X_test[num_cols])
-        
-        if scaler_type == "standard":
-            scaler = StandardScaler()
-            X_train[num_cols] = scaler.fit_transform(X_train[num_cols])
-            X_test[num_cols] = scaler.transform(X_test[num_cols])
-        elif scaler_type == "minmax":
-            scaler = MinMaxScaler()
-            X_train[num_cols] = scaler.fit_transform(X_train[num_cols])
-            X_test[num_cols] = scaler.transform(X_test[num_cols])
-        # If "none" is selected, no scaling is performed.
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('encoder', OneHotEncoder(handle_unknown='ignore'))
+    ])
     
-    # Process categorical features
-    if len(cat_cols) > 0:
-        cat_imputer = SimpleImputer(strategy="most_frequent")
-        X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
-        X_test[cat_cols] = cat_imputer.transform(X_test[cat_cols])
-        
-        encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
-        X_train_enc = pd.DataFrame(encoder.fit_transform(X_train[cat_cols]),
-                                   columns=encoder.get_feature_names_out(cat_cols),
-                                   index=X_train.index)
-        X_test_enc = pd.DataFrame(encoder.transform(X_test[cat_cols]),
-                                  columns=encoder.get_feature_names_out(cat_cols),
-                                  index=X_test.index)
-        # Drop original categorical columns and concat encoded ones
-        X_train = pd.concat([X_train.drop(columns=cat_cols), X_train_enc], axis=1)
-        X_test = pd.concat([X_test.drop(columns=cat_cols), X_test_enc], axis=1)
-        
-    return X_train, X_test, y_train, y_test
+    # Create preprocessor
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    return X_train, X_test, y_train, y_test, preprocessor
 
-# --- Model Training Function ---
-def model_train(x_train, y_train, model, model_name):
-    """
-    Train the model on training data and save it as a pickle file.
-    """
-    model.fit(x_train, y_train)
-    # Ensure the trained_model directory exists
-    model_dir = os.path.join(parent_dir, "trained_model")
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-    model_path = os.path.join(model_dir, f"{model_name}.pkl")
-    with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
-    return model
+def save_model(pipeline, model_name):
+    os.makedirs(f'{parent_dir}/trained_models', exist_ok=True)
+    with open(f'{parent_dir}/trained_models/{model_name}.pkl', 'wb') as f:
+        pickle.dump(pipeline, f)
 
-# --- Model Evaluation Function ---
-def evaluation(model, x_test, y_test):
-    """
-    Evaluate the trained model on the test set and return the accuracy.
-    """
-    y_pred = model.predict(x_test)
-    acc = accuracy_score(y_test, y_pred)
-    return round(acc, 2)
+def evaluate_model(pipeline, X_test, y_test):
+    y_pred = pipeline.predict(X_test)
+    return {
+        'accuracy': accuracy_score(y_test, y_pred),
+        'precision': precision_score(y_test, y_pred, average='weighted'),
+        'recall': recall_score(y_test, y_pred, average='weighted'),
+        'f1': f1_score(y_test, y_pred, average='weighted')
+    }
