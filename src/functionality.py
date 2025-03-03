@@ -178,6 +178,13 @@ def run():
             poly_interaction_enabled = st.checkbox("Apply Interaction Only Polynomial Features")
             if poly_interaction_enabled:
                 poly_interaction_cols = st.multiselect("Select numeric columns for interaction-only polynomial features", options=num_cols)
+            # Option 18: Dimensionality Reduction Options (e.g., PCA)
+            dim_red_enabled = st.checkbox("Apply Dimensionality Reduction (e.g., PCA, Kernel PCA, Truncated SVD)")
+            if dim_red_enabled:
+                dr_method = st.selectbox("Select Dimensionality Reduction Method", ["PCA", "Kernel PCA", "Truncated SVD"])
+                n_components = st.number_input("Number of Components", min_value=1, max_value=50, value=2, step=1)
+                dr_cols = st.multiselect("Select columns for dimensionality reduction", options=list(df.columns), 
+                                         default=list(df.select_dtypes(include=["number"]).columns))
             
             if st.button("Apply Feature Engineering"):
                 df_fe = df.copy()
@@ -321,6 +328,23 @@ def run():
                         df_fe = pd.concat([df_fe, poly_int_df], axis=1)
                     except Exception as e:
                         st.error(f"Error applying interaction-only polynomial features: {e}")
+                if dim_red_enabled and dr_cols:
+                    try:
+                        if dr_method == "PCA":
+                            from sklearn.decomposition import PCA
+                            dr_model = PCA(n_components=int(n_components))
+                        elif dr_method == "Kernel PCA":
+                            from sklearn.decomposition import KernelPCA
+                            dr_model = KernelPCA(n_components=int(n_components))
+                        elif dr_method == "Truncated SVD":
+                            from sklearn.decomposition import TruncatedSVD
+                            dr_model = TruncatedSVD(n_components=int(n_components))
+                        dr_features = dr_model.fit_transform(df_fe[dr_cols])
+                        dr_df = pd.DataFrame(dr_features, columns=[f"{dr_method}_comp_{i}" for i in range(1, int(n_components)+1)], index=df_fe.index)
+                        df_fe = df_fe.drop(columns=dr_cols)
+                        df_fe = pd.concat([df_fe, dr_df], axis=1)
+                    except Exception as e:
+                        st.error(f"Error applying dimensionality reduction: {e}")
     
                 st.session_state["df"] = df_fe
                 st.success("Feature engineering applied successfully!")
