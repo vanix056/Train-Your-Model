@@ -160,11 +160,23 @@ def evaluation(model, x_test, y_test, problem_type="Classification"):
 # Hyperparameter Tuning Function
 ############################################
 def tune_model(x_train, y_train, model, param_grid, search_method="grid", cv=5, n_iter=10):
+    from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+    # Try to import halving search CV methods (if available)
+    try:
+        from sklearn.model_selection import HalvingGridSearchCV, HalvingRandomSearchCV
+    except ImportError:
+        HalvingGridSearchCV = None
+        HalvingRandomSearchCV = None
+
     if search_method == "grid":
-        from sklearn.model_selection import GridSearchCV
         search = GridSearchCV(model, param_grid, cv=cv)
-    else:
-        from sklearn.model_selection import RandomizedSearchCV
+    elif search_method == "random":
         search = RandomizedSearchCV(model, param_grid, cv=cv, n_iter=n_iter)
+    elif search_method == "halving_grid" and HalvingGridSearchCV is not None:
+        search = HalvingGridSearchCV(model, param_grid, cv=cv)
+    elif search_method == "halving_random" and HalvingRandomSearchCV is not None:
+        search = HalvingRandomSearchCV(model, param_grid, cv=cv, n_candidates=n_iter)
+    else:
+        search = GridSearchCV(model, param_grid, cv=cv)
     search.fit(x_train, y_train)
     return search.best_estimator_, search.best_params_

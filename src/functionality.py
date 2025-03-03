@@ -29,9 +29,6 @@ except ImportError:
     xgb_available = False
 
 # Import our helper functions from util.py:
-# - preprocess_classification_data: uses the “old” technique for classification
-# - preprocess_regression_data: uses a modified technique for regression (for example, median imputation)
-# - model_train, evaluation, tune_model: for training, evaluating, and hyperparameter tuning
 from util import (
     preprocess_classification_data,
     preprocess_regression_data,
@@ -95,7 +92,7 @@ def run():
             st.subheader("Current Data Preview")
             st.dataframe(df.head())
     
-            st.markdown("### Modify Your Data")
+            st.markdown("### Basic Feature Engineering Options")
             # Option 1: Drop Columns
             drop_cols = st.multiselect("Select columns to drop", options=list(df.columns))
             # Option 2: Log Transformation for numeric columns
@@ -107,18 +104,91 @@ def run():
                                        help="New polynomial features will be added for the selected columns.")
             poly_degree = st.number_input("Degree for polynomial features", min_value=2, max_value=5, value=2, step=1)
     
+            st.markdown("### Additional Feature Engineering Options")
+            # Option 1: Binning/Discretization
+            binning_enabled = st.checkbox("Apply Binning/Discretization on numeric columns")
+            if binning_enabled:
+                bin_cols = st.multiselect("Select numeric columns to bin", options=num_cols)
+                n_bins = st.number_input("Number of bins", min_value=2, max_value=20, value=5, step=1)
+                bin_method = st.selectbox("Binning method", ["Equal Width", "Equal Frequency"])
+            # Option 2: Interaction Features
+            interaction_enabled = st.checkbox("Create Interaction Features for numeric columns")
+            if interaction_enabled:
+                interaction_cols = st.multiselect("Select numeric columns to interact", options=num_cols)
+            # Option 3: Square Root Transformation
+            sqrt_enabled = st.checkbox("Apply Square Root Transformation to numeric columns")
+            if sqrt_enabled:
+                sqrt_cols = st.multiselect("Select numeric columns for square root transformation", options=num_cols)
+            # Option 4: Exponential Transformation
+            exp_enabled = st.checkbox("Apply Exponential Transformation to numeric columns")
+            if exp_enabled:
+                exp_cols = st.multiselect("Select numeric columns for exponential transformation", options=num_cols)
+            # Option 5: Power Transformation (Yeo-Johnson)
+            power_enabled = st.checkbox("Apply Power Transformation (Yeo-Johnson) to numeric columns")
+            if power_enabled:
+                power_cols = st.multiselect("Select numeric columns for power transformation", options=num_cols)
+            # Option 6: Outlier Removal
+            outlier_enabled = st.checkbox("Remove Outliers based on IQR for numeric columns")
+            if outlier_enabled:
+                outlier_cols = st.multiselect("Select numeric columns for outlier removal", options=num_cols)
+                iqr_multiplier = st.number_input("IQR multiplier", min_value=1.0, max_value=5.0, value=1.5, step=0.1)
+            # Option 7: Feature Crossing for Categorical Columns
+            cat_cols = list(df.select_dtypes(include=["object", "category"]).columns)
+            cross_enabled = st.checkbox("Create Feature Cross for categorical columns")
+            if cross_enabled:
+                cross_cols = st.multiselect("Select two categorical columns for feature crossing", options=cat_cols, max_selections=2)
+            # Option 8: Frequency Encoding for Categorical Columns
+            freq_enabled = st.checkbox("Apply Frequency Encoding to categorical columns")
+            if freq_enabled:
+                freq_cols = st.multiselect("Select categorical columns for frequency encoding", options=cat_cols)
+            # Option 9: Target Encoding for Categorical Columns
+            target_encode_enabled = st.checkbox("Apply Target Encoding to categorical columns (requires target column)")
+            if target_encode_enabled:
+                target_encode_cols = st.multiselect("Select categorical columns for target encoding", options=cat_cols)
+            # Option 10: Datetime Feature Extraction
+            datetime_enabled = st.checkbox("Extract DateTime features")
+            if datetime_enabled:
+                datetime_cols = st.multiselect("Select datetime columns", options=list(df.columns))
+            # Option 11: Text Length Feature for Text Columns
+            text_len_enabled = st.checkbox("Create Text Length Feature for text columns")
+            if text_len_enabled:
+                text_cols = st.multiselect("Select text columns", options=list(df.select_dtypes(include=["object"]).columns))
+            # Option 12: Replace Missing Values with a Constant
+            replace_missing_enabled = st.checkbox("Replace Missing Values with a Constant")
+            if replace_missing_enabled:
+                replace_missing_cols = st.multiselect("Select columns to replace missing values", options=list(df.columns))
+                constant_value = st.text_input("Constant value to fill missing values", value="0")
+            # Option 13: Add Missing Indicator for Columns
+            missing_indicator_enabled = st.checkbox("Add Missing Value Indicator for columns")
+            if missing_indicator_enabled:
+                missing_indicator_cols = st.multiselect("Select columns to add missing indicator", options=list(df.columns))
+            # Option 14: Robust Scaling for Numeric Columns
+            robust_scaling_enabled = st.checkbox("Apply Robust Scaling to numeric columns")
+            if robust_scaling_enabled:
+                robust_scaling_cols = st.multiselect("Select numeric columns for robust scaling", options=num_cols)
+            # Option 15: Rank Transformation for Numeric Columns
+            rank_enabled = st.checkbox("Apply Rank Transformation to numeric columns")
+            if rank_enabled:
+                rank_cols = st.multiselect("Select numeric columns for rank transformation", options=num_cols)
+            # Option 16: Log1p Transformation for Numeric Columns
+            log1p_enabled = st.checkbox("Apply Log1p Transformation to numeric columns")
+            if log1p_enabled:
+                log1p_cols = st.multiselect("Select numeric columns for log1p transformation", options=num_cols)
+            # Option 17: Interaction Only Polynomial Features
+            poly_interaction_enabled = st.checkbox("Apply Interaction Only Polynomial Features")
+            if poly_interaction_enabled:
+                poly_interaction_cols = st.multiselect("Select numeric columns for interaction-only polynomial features", options=num_cols)
+            
             if st.button("Apply Feature Engineering"):
                 df_fe = df.copy()
-                # Drop selected columns
+                # Basic Feature Engineering
                 if drop_cols:
                     df_fe.drop(columns=drop_cols, inplace=True)
-                # Log transformation: add new columns with suffix _log
                 for col in log_cols:
                     try:
                         df_fe[f"{col}_log"] = df_fe[col].apply(lambda x: np.log(x) if (x is not None and x > 0) else np.nan)
                     except Exception as e:
                         st.error(f"Error applying log transformation on {col}: {e}")
-                # Polynomial features for selected columns
                 if poly_cols:
                     from sklearn.preprocessing import PolynomialFeatures
                     poly = PolynomialFeatures(degree=int(poly_degree), include_bias=False)
@@ -130,7 +200,129 @@ def run():
                             df_fe = pd.concat([df_fe, poly_df], axis=1)
                         except Exception as e:
                             st.error(f"Error applying polynomial features on {col}: {e}")
-                st.session_state["df"] = df_fe  # Update dataframe in session state
+                # Additional Feature Engineering Options
+                if binning_enabled and bin_cols:
+                    for col in bin_cols:
+                        try:
+                            if bin_method == "Equal Width":
+                                df_fe[f"{col}_binned"] = pd.cut(df_fe[col], bins=n_bins, labels=False)
+                            else:
+                                df_fe[f"{col}_binned"] = pd.qcut(df_fe[col], q=n_bins, labels=False, duplicates='drop')
+                        except Exception as e:
+                            st.error(f"Error applying binning on {col}: {e}")
+                if interaction_enabled and len(interaction_cols) > 1:
+                    try:
+                        df_fe["interaction_" + "_".join(interaction_cols)] = df_fe[interaction_cols].prod(axis=1)
+                    except Exception as e:
+                        st.error(f"Error creating interaction features: {e}")
+                if sqrt_enabled and sqrt_cols:
+                    for col in sqrt_cols:
+                        try:
+                            df_fe[f"{col}_sqrt"] = df_fe[col].apply(lambda x: np.sqrt(x) if x >= 0 else np.nan)
+                        except Exception as e:
+                            st.error(f"Error applying square root transformation on {col}: {e}")
+                if exp_enabled and exp_cols:
+                    for col in exp_cols:
+                        try:
+                            df_fe[f"{col}_exp"] = np.exp(df_fe[col])
+                        except Exception as e:
+                            st.error(f"Error applying exponential transformation on {col}: {e}")
+                if power_enabled and power_cols:
+                    try:
+                        from sklearn.preprocessing import PowerTransformer
+                        pt = PowerTransformer(method="yeo-johnson")
+                        df_power = pd.DataFrame(pt.fit_transform(df_fe[power_cols]), columns=[f"{col}_power" for col in power_cols], index=df_fe.index)
+                        df_fe = pd.concat([df_fe, df_power], axis=1)
+                    except Exception as e:
+                        st.error(f"Error applying power transformation: {e}")
+                if outlier_enabled and outlier_cols:
+                    try:
+                        for col in outlier_cols:
+                            Q1 = df_fe[col].quantile(0.25)
+                            Q3 = df_fe[col].quantile(0.75)
+                            IQR = Q3 - Q1
+                            df_fe = df_fe[(df_fe[col] >= Q1 - iqr_multiplier * IQR) & (df_fe[col] <= Q3 + iqr_multiplier * IQR)]
+                    except Exception as e:
+                        st.error(f"Error removing outliers: {e}")
+                if cross_enabled and len(cross_cols) == 2:
+                    try:
+                        df_fe[f"cross_{cross_cols[0]}_{cross_cols[1]}"] = df_fe[cross_cols[0]].astype(str) + "_" + df_fe[cross_cols[1]].astype(str)
+                    except Exception as e:
+                        st.error(f"Error creating feature cross: {e}")
+                if freq_enabled and freq_cols:
+                    for col in freq_cols:
+                        try:
+                            freq = df_fe[col].value_counts()
+                            df_fe[f"{col}_freq"] = df_fe[col].map(freq)
+                        except Exception as e:
+                            st.error(f"Error applying frequency encoding on {col}: {e}")
+                if target_encode_enabled and target_encode_cols and 'target_column' in st.session_state:
+                    for col in target_encode_cols:
+                        try:
+                            mapping = df_fe.groupby(col)[st.session_state["target_column"]].mean()
+                            df_fe[f"{col}_target_enc"] = df_fe[col].map(mapping)
+                        except Exception as e:
+                            st.error(f"Error applying target encoding on {col}: {e}")
+                if datetime_enabled and datetime_cols:
+                    for col in datetime_cols:
+                        try:
+                            df_fe[col] = pd.to_datetime(df_fe[col], errors='coerce')
+                            df_fe[f"{col}_year"] = df_fe[col].dt.year
+                            df_fe[f"{col}_month"] = df_fe[col].dt.month
+                            df_fe[f"{col}_day"] = df_fe[col].dt.day
+                            df_fe[f"{col}_weekday"] = df_fe[col].dt.weekday
+                        except Exception as e:
+                            st.error(f"Error extracting datetime features from {col}: {e}")
+                if text_len_enabled and text_cols:
+                    for col in text_cols:
+                        try:
+                            df_fe[f"{col}_len"] = df_fe[col].astype(str).apply(len)
+                        except Exception as e:
+                            st.error(f"Error creating text length feature for {col}: {e}")
+                if replace_missing_enabled and replace_missing_cols:
+                    for col in replace_missing_cols:
+                        try:
+                            df_fe[col] = df_fe[col].fillna(constant_value)
+                        except Exception as e:
+                            st.error(f"Error replacing missing values in {col}: {e}")
+                if missing_indicator_enabled and missing_indicator_cols:
+                    for col in missing_indicator_cols:
+                        try:
+                            df_fe[f"{col}_missing"] = df_fe[col].isna().astype(int)
+                        except Exception as e:
+                            st.error(f"Error adding missing indicator for {col}: {e}")
+                if robust_scaling_enabled and robust_scaling_cols:
+                    try:
+                        from sklearn.preprocessing import RobustScaler
+                        rs = RobustScaler()
+                        df_rs = pd.DataFrame(rs.fit_transform(df_fe[robust_scaling_cols]), columns=[f"{col}_robust" for col in robust_scaling_cols], index=df_fe.index)
+                        df_fe = pd.concat([df_fe, df_rs], axis=1)
+                    except Exception as e:
+                        st.error(f"Error applying robust scaling: {e}")
+                if rank_enabled and rank_cols:
+                    for col in rank_cols:
+                        try:
+                            df_fe[f"{col}_rank"] = df_fe[col].rank()
+                        except Exception as e:
+                            st.error(f"Error applying rank transformation on {col}: {e}")
+                if log1p_enabled and log1p_cols:
+                    for col in log1p_cols:
+                        try:
+                            df_fe[f"{col}_log1p"] = np.log1p(df_fe[col])
+                        except Exception as e:
+                            st.error(f"Error applying log1p transformation on {col}: {e}")
+                if poly_interaction_enabled and poly_interaction_cols:
+                    try:
+                        from sklearn.preprocessing import PolynomialFeatures
+                        poly_int = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+                        poly_int_features = poly_int.fit_transform(df_fe[poly_interaction_cols])
+                        poly_int_feature_names = poly_int.get_feature_names_out(poly_interaction_cols)
+                        poly_int_df = pd.DataFrame(poly_int_features, columns=[f"{name}_int" for name in poly_int_feature_names], index=df_fe.index)
+                        df_fe = pd.concat([df_fe, poly_int_df], axis=1)
+                    except Exception as e:
+                        st.error(f"Error applying interaction-only polynomial features: {e}")
+    
+                st.session_state["df"] = df_fe
                 st.success("Feature engineering applied successfully!")
                 st.dataframe(df_fe.head())
     
@@ -152,6 +344,7 @@ def run():
             col1, col2 = st.columns(2)
             with col1:
                 target_column = st.selectbox("Select the Target Column", list(df.columns))
+                st.session_state["target_column"] = target_column
             with col2:
                 scaler_options = ["standard", "minmax", "none"]
                 scaler_type = st.selectbox("Select Scaler Type for Numeric Columns", scaler_options)
@@ -262,12 +455,11 @@ def run():
             tuning_enabled = st.checkbox("Perform Hyperparameter Tuning", value=False)
             if tuning_enabled:
                 st.subheader("Hyperparameter Tuning Options")
-                search_method = st.radio("Select Search Method", options=["GridSearchCV", "RandomizedSearchCV"], index=0)
+                search_method_choice = st.radio("Select Search Method", options=["GridSearchCV", "RandomizedSearchCV", "HalvingGridSearchCV", "HalvingRandomSearchCV"], index=0)
                 cv_folds = st.number_input("Number of CV folds", min_value=2, max_value=10, value=5, step=1)
                 n_iter = 10
-                if search_method == "RandomizedSearchCV":
+                if search_method_choice in ["RandomizedSearchCV", "HalvingRandomSearchCV"]:
                     n_iter = st.number_input("Number of parameter settings sampled", min_value=1, max_value=100, value=10, step=1)
-                # Allow custom parameter grid input as JSON
                 param_grid_str = st.text_area("Parameter Grid (JSON format)", value=json.dumps(default_grid, indent=4))
                 try:
                     param_grid = json.loads(param_grid_str) if param_grid_str.strip() != "" else default_grid
@@ -325,7 +517,14 @@ def run():
                 # If hyperparameter tuning is enabled
                 if tuning_enabled:
                     with st.spinner("Performing hyperparameter tuning..."):
-                        method = "grid" if search_method == "GridSearchCV" else "random"
+                        if search_method_choice == "GridSearchCV":
+                            method = "grid"
+                        elif search_method_choice == "RandomizedSearchCV":
+                            method = "random"
+                        elif search_method_choice == "HalvingGridSearchCV":
+                            method = "halving_grid"
+                        elif search_method_choice == "HalvingRandomSearchCV":
+                            method = "halving_random"
                         best_model, best_params = tune_model(x_train, y_train, base_model, param_grid, search_method=method, cv=cv_folds, n_iter=int(n_iter))
                     st.success(f"Best Parameters Found: {best_params}")
                     trained_model = best_model
