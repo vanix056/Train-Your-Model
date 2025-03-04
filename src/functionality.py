@@ -372,7 +372,7 @@ def run():
                         elif dr_method == "UMAP" and umap_available:
                             dr_model = umap.UMAP(n_components=int(n_components))
                         elif dr_method == "LDA":
-                            from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+                            
                             dr_model = LinearDiscriminantAnalysis(n_components=int(n_components))
                         else:
                             dr_model = PCA(n_components=int(n_components))
