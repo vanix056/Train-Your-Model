@@ -176,18 +176,43 @@ def model_train(x_train, y_train, model, model_name, version="1.0", pipeline=Fal
 # Model Evaluation Function with Extra Metrics
 ############################################
 def evaluation(model, x_test, y_test, problem_type="Classification"):
+    """
+    Evaluate the model and return a dictionary of metrics.
+    For classification: accuracy, confusion matrix, precision, recall, F1-score.
+    For regression: R², MAE, RMSE.
+    """
+    y_pred = model.predict(x_test)
+    
     if problem_type == "Classification":
-        y_pred = model.predict(x_test)
+        from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, f1_score
+        
         acc = accuracy_score(y_test, y_pred)
         cm = confusion_matrix(y_test, y_pred)
-        return {"accuracy": round(acc, 2), "confusion_matrix": cm}
+        precision = precision_score(y_test, y_pred, average="weighted")
+        recall = recall_score(y_test, y_pred, average="weighted")
+        f1 = f1_score(y_test, y_pred, average="weighted")
+        
+        return {
+            "accuracy": round(acc, 4),
+            "confusion_matrix": cm,
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1_score": round(f1, 4)
+        }
     else:
-        y_pred = model.predict(x_test)
+        from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+        
         r2 = r2_score(y_test, y_pred)
         mae = mean_absolute_error(y_test, y_pred)
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        return {"r2": round(r2, 2), "mae": round(mae,2), "rmse": round(rmse,2)}
-
+        mse = mean_squared_error(y_test, y_pred)
+        
+        return {
+            "r2": round(r2, 4),
+            "mae": round(mae, 4),
+            "rmse": round(rmse, 4),
+            "mse": round(mse, 4)
+        }
 ############################################
 # Hyperparameter Tuning Function (including Optuna)
 ############################################
