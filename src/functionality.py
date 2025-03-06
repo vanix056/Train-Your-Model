@@ -393,9 +393,9 @@ def run():
                 st.success("Feature engineering applied successfully!")
                 st.dataframe(df_fe.head())
     
-    # =====================================================
-    # Tab 3: Model Training & Tuning
-    # =====================================================
+
+# Tab 3: Model Training & Tuning
+# =====================================================
     with tabs[2]:
         st.header("Model Training & Hyperparameter Tuning")
         if "df" not in st.session_state:
@@ -416,11 +416,11 @@ def run():
                 scaler_type = st.selectbox("Select Scaler Type", scaler_options)
             with col3:
                 imputer_method = st.selectbox("Select Imputation Method", ["mean", "knn", "iterative"] if problem_type=="Classification" else ["median", "knn", "iterative"])
-    
+
             st.markdown("### Model Options")
             ensemble_enabled = st.checkbox("Use Ensemble Methods (Stacking)")
-    
-           # Add the unused models to the classification model_dict
+
+            # Add the unused models to the classification model_dict
             if problem_type == "Classification":
                 model_dict = {
                     "Logistic Regression": {
@@ -490,7 +490,7 @@ def run():
                 if ensemble_enabled:
                     estimators = [(name, m["model"]) for name, m in model_dict.items()]
                     ensemble_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-                    model_dict = {"Stacking Classifier": {"model": ensemble_model, "default_grid": {}}} 
+                    model_dict = {"Stacking Classifier": {"model": ensemble_model, "default_grid": {}}}
                     
             else:
                 model_dict = {
@@ -524,13 +524,13 @@ def run():
                     estimators = [(name, m["model"]) for name, m in model_dict.items()]
                     ensemble_model = StackingRegressor(estimators=estimators, final_estimator=LinearRegression())
                     model_dict = {"Stacking Regressor": {"model": ensemble_model, "default_grid": {}}}
-    
+
             model_name = st.text_input("Enter a name for the model", value="my_model")
             model_version = st.text_input("Enter model version", value="1.0")
             selected_model_name = st.selectbox("Select a Model", list(model_dict.keys()))
             base_model = model_dict[selected_model_name]["model"]
             default_grid = model_dict[selected_model_name]["default_grid"]
-    
+
             st.markdown("### Hyperparameter Tuning Options")
             tuning_enabled = st.checkbox("Perform Hyperparameter Tuning", value=False)
             if tuning_enabled:
@@ -547,7 +547,7 @@ def run():
                     param_grid = default_grid
             else:
                 pass  # Manual parameter adjustments can be added here.
-    
+
             if st.button("Train Model"):
                 progress_bar = st.progress(0)
                 if problem_type == "Classification":
@@ -555,7 +555,7 @@ def run():
                 else:
                     x_train, x_test, y_train, y_test = preprocess_regression_data(df, target_column, scaler_type, imputer_method)
                 progress_bar.progress(30)
-    
+
                 if tuning_enabled:
                     with st.spinner("Performing hyperparameter tuning..."):
                         if search_method_choice == "GridSearchCV":
@@ -578,14 +578,24 @@ def run():
                 trained_model = model_train(x_train, y_train, trained_model, model_name, model_version)
                 progress_bar.progress(90)
                 metrics = evaluation(trained_model, x_test, y_test, problem_type)
+
+                # Display metrics based on problem type
                 if problem_type == "Classification":
-                    st.success(f"Model '{model_name}' trained with Accuracy: {metrics['accuracy']}")
+                    st.success(f"Model '{model_name}' trained with the following metrics:")
+                    st.write(f"- Accuracy: {metrics['accuracy']}")
+                    st.write(f"- Precision: {metrics['precision']}")
+                    st.write(f"- Recall: {metrics['recall']}")
+                    st.write(f"- F1 Score: {metrics['f1_score']}")
                     st.write("Confusion Matrix:")
                     st.write(metrics["confusion_matrix"])
                 else:
-                    st.success(f"Model '{model_name}' trained with R²: {metrics['r2']}, MAE: {metrics['mae']}, RMSE: {metrics['rmse']}")
+                    st.success(f"Model '{model_name}' trained with the following metrics:")
+                    st.write(f"- R²: {metrics['r2']}")
+                    st.write(f"- MAE: {metrics['mae']}")
+                    st.write(f"- RMSE: {metrics['rmse']}")
+                    st.write(f"- MSE: {metrics['mse']}")
                 progress_bar.progress(100)
-    
+
                 if st.button("Explain Model with SHAP"):
                     with st.spinner("Computing SHAP values..."):
                         sample_data = x_test.iloc[:100]
@@ -600,7 +610,7 @@ def run():
                                 st.error(f"Error plotting SHAP values: {e}")
                         else:
                             st.error(err)
-    
+
                 model_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trained_model")
                 model_path = os.path.join(model_dir, f"{model_name}_v{model_version}.pkl")
                 if os.path.exists(model_path):
@@ -608,9 +618,9 @@ def run():
                         st.download_button("Download Trained Model", data=f.read(), file_name=f"{model_name}_v{model_version}.pkl", mime="application/octet-stream")
                 else:
                     st.error("Model file not found!")
-    
+
                 if st.button("Upload Model to Cloud"):
                     st.info("Cloud upload functionality not implemented yet.")
-    
+                    
 if __name__ == "__main__":
     run()
