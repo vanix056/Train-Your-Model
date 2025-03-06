@@ -420,6 +420,7 @@ def run():
             st.markdown("### Model Options")
             ensemble_enabled = st.checkbox("Use Ensemble Methods (Stacking)")
     
+           # Add the unused models to the classification model_dict
             if problem_type == "Classification":
                 model_dict = {
                     "Logistic Regression": {
@@ -433,6 +434,30 @@ def run():
                     "SVC": {
                         "model": SVC(probability=True),
                         "default_grid": {"C": [0.1, 1, 10], "kernel": ["rbf", "linear", "poly"]}
+                    },
+                    "Extra Trees Classifier": {
+                        "model": ExtraTreesClassifier(),
+                        "default_grid": {"n_estimators": [50, 100, 200], "max_depth": [None, 10, 20, 30]}
+                    },
+                    "AdaBoost Classifier": {
+                        "model": AdaBoostClassifier(),
+                        "default_grid": {"n_estimators": [50, 100, 200], "learning_rate": [0.01, 0.1, 0.2]}
+                    },
+                    "Linear SVC": {
+                        "model": LinearSVC(),
+                        "default_grid": {"C": [0.1, 1, 10], "max_iter": [1000, 2000]}
+                    },
+                    "NuSVC": {
+                        "model": NuSVC(probability=True),
+                        "default_grid": {"nu": [0.1, 0.5, 0.7], "kernel": ["rbf", "linear", "poly"]}
+                    },
+                    "Quadratic Discriminant Analysis": {
+                        "model": QuadraticDiscriminantAnalysis(),
+                        "default_grid": {}
+                    },
+                    "Bernoulli Naive Bayes": {
+                        "model": BernoulliNB(),
+                        "default_grid": {"alpha": [0.1, 0.5, 1.0]}
                     },
                 }
                 if xgb_available:
@@ -465,7 +490,8 @@ def run():
                 if ensemble_enabled:
                     estimators = [(name, m["model"]) for name, m in model_dict.items()]
                     ensemble_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-                    model_dict = {"Stacking Classifier": {"model": ensemble_model, "default_grid": {}}}
+                    model_dict = {"Stacking Classifier": {"model": ensemble_model, "default_grid": {}}} 
+                    
             else:
                 model_dict = {
                     "Linear Regression": {
