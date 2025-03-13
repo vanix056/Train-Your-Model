@@ -67,6 +67,18 @@ def load_lottieurl(url: str):
         return None
     return r.json()
 
+
+############################################
+# Sanatizing Column Names
+############################################
+def sanitize_column_names(df):
+    """Replace invalid characters in column names with underscores."""
+    df.columns = [
+        col.replace("[", "_").replace("]", "_").replace("<", "_").replace(">", "_")
+        for col in df.columns
+    ]
+    return df
+
 ############################################
 # Caching Data Loading
 ############################################
@@ -77,6 +89,7 @@ def load_data(uploaded_file):
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
+        df = sanitize_column_names(df)
         return df
     except Exception as e:
         st.error(f"Error reading file: {e}")
@@ -388,12 +401,13 @@ def run():
                             st.pyplot(fig)
                     except Exception as e:
                         st.error(f"Error in dimensionality reduction: {e}")
-    
+                        
+                df_fe = sanitize_column_names(df_fe)    
                 st.session_state["df"] = df_fe
                 st.success("Feature engineering applied successfully!")
                 st.dataframe(df_fe.head())
     
-
+# =====================================================
 # Tab 3: Model Training & Tuning
 # =====================================================
     with tabs[2]:
@@ -549,6 +563,10 @@ def run():
                 pass  # Manual parameter adjustments can be added here.
 
             if st.button("Train Model"):
+                df = st.session_state["df"]
+                df = sanitize_column_names(df)
+                st.session_state["df"] = df
+                
                 progress_bar = st.progress(0)
                 if problem_type == "Classification":
                     x_train, x_test, y_train, y_test = preprocess_classification_data(df, target_column, scaler_type, imputer_method)
@@ -597,6 +615,10 @@ def run():
                 progress_bar.progress(100)
 
                 if st.button("Explain Model with SHAP"):
+                    df = st.session_state["df"]
+                    df = sanitize_column_names(df)
+                    st.session_state["df"] = df
+                    
                     with st.spinner("Computing SHAP values..."):
                         sample_data = x_test.iloc[:100]
                         shap_values, err = compute_shap(trained_model, sample_data)
@@ -621,6 +643,8 @@ def run():
 
                 if st.button("Upload Model to Cloud"):
                     st.info("Cloud upload functionality not implemented yet.")
+
                     
 if __name__ == "__main__":
+    
     run()
