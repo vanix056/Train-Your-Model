@@ -539,7 +539,7 @@ def run():
                 n_iter = 10
                 if search_method_choice in ["RandomizedSearchCV", "HalvingRandomSearchCV", "Optuna"]:
                     n_iter = st.number_input("Number of parameter settings sampled", min_value=1, max_value=100, value=10, step=1)
-                param_grid_str = st.text_area("Parameter Grid (JSON format)", value=json.dumps(default_grid, indent=4))
+                param_grid_str = st.text_area("Parameter Grid (JSON format)-> you can modify this file", value=json.dumps(default_grid, indent=4))
                 try:
                     param_grid = json.loads(param_grid_str) if param_grid_str.strip() != "" else default_grid
                 except Exception as e:
