@@ -104,7 +104,7 @@ def run():
     st.set_page_config(page_title="No Code ML Training", page_icon="🧠", layout="wide")
      # Initialize session state variables
     required_keys = {
-        "df": None,
+        "df": pd.DataFrame(),
         "target_column": None,
         "trained_model": None,
         "x_test": None,
@@ -134,10 +134,10 @@ def run():
         if uploaded_file and not st.session_state.feature_engineered:
             try:
                 df = load_data(uploaded_file)
-                df = sanitize_column_names(df)
-                st.session_state.df = df
-                st.session_state.feature_engineered = False  # Reset flag on new upload
-                st.dataframe(df.head())
+                if df is not None and not df.empty:
+                    df = sanitize_column_names(df)
+                    st.session_state.df = df
+                    st.dataframe(df.head())
             except Exception as e:
                 st.error(f"Load error: {str(e)}")        
         else:
@@ -439,8 +439,8 @@ def run():
 # =====================================================
     with tabs[2]:
         st.header("Model Training & Hyperparameter Tuning")
-        if "df" not in st.session_state:
-            st.warning("No dataset found. Please upload data in the Data Upload tab.")
+        if st.session_state.df is None or st.session_state.df.empty:
+            st.warning("No dataset found or dataset is empty. Please upload data in the Data Upload tab.")
         else:
             df = st.session_state["df"]
             st.subheader("Data Preview")
@@ -643,8 +643,36 @@ def run():
                     st.write(f"- RMSE: {metrics['rmse']}")
                     st.write(f"- MSE: {metrics['mse']}")
                 progress_bar.progress(100)
+                
+        col1, col2 = st.columns(2)
+        with col1:
+            try:
+                model_bytes = pickle.dumps(st.session_state.trained_model)
+                st.download_button(
+                    "Download Trained Model",
+                    data=model_bytes,
+                    file_name=f"{model_name}_v{model_version}.pkl",
+                    mime="application/octet-stream"
+                )
+            except Exception as e:
+                st.error(f"Download failed: {str(e)}")
 
-                # SHAP Explanation
+        with col2:
+            if st.button("Upload Model to Cloud"):
+                if "trained_model" not in st.session_state or st.session_state.trained_model is None:
+                    st.error("No trained model found! Train a model first.")
+                else:
+                    st.info("The cloud functionality is not implemented yet")
+                            # Explicit state preservation
+                    st.session_state.update({
+                        "df": st.session_state.df,
+                        "trained_model": st.session_state.trained_model,
+                        "x_test": st.session_state.x_test
+                    })
+
+                # SHAP Explanation (separate section)
+        st.markdown("---")                
+        # SHAP Explanation
         if st.button("Explain with SHAP"):
     # Check for both model and test data
             if "trained_model" not in st.session_state or st.session_state.trained_model is None:
@@ -676,25 +704,14 @@ def run():
                         st.write("- Install latest SHAP: `pip install --upgrade shap`")
                         st.write("- For non-tree models, use smaller samples")
                                         
-                model_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trained_model")
-                model_path = os.path.join(model_dir, f"{model_name}_v{model_version}.pkl")
-                if os.path.exists(model_path):
-                    with open(model_path, "rb") as f:
-                        st.download_button("Download Trained Model", data=f.read(), file_name=f"{model_name}_v{model_version}.pkl", mime="application/octet-stream")
-                else:
-                    st.error("Model file not found!")
+                # model_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trained_model")
+                # model_path = os.path.join(model_dir, f"{model_name}_v{model_version}.pkl")
+                # if os.path.exists(model_path):
+                #     with open(model_path, "rb") as f:
+                #         st.download_button("Download Trained Model", data=f.read(), file_name=f"{model_name}_v{model_version}.pkl", mime="application/octet-stream")
+                # else:
+                #     st.error("Model file not found!")
 
-                # Model Upload
-                if st.button("Upload to Cloud"):
-                    if not st.session_state.trained_model:
-                        st.error("No trained model!")
-                    else:
-                        try:
-                            # Serialization check
-                            model_bytes = pickle.dumps(st.session_state.trained_model)
-                            st.success("Model uploaded successfully!")
-                        except Exception as e:
-                            st.error(f"Upload failed: {str(e)}")
-
+                                
 if __name__ == "__main__":
     run()
