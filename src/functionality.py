@@ -673,45 +673,104 @@ def run():
                 # SHAP Explanation (separate section)
         st.markdown("---")                
         # SHAP Explanation
-        if st.button("Explain with SHAP"):
-    # Check for both model and test data
+        
+
+        if st.button("Explain Model"):
             if "trained_model" not in st.session_state or st.session_state.trained_model is None:
                 st.error("Train a model first!")
-            elif "x_test" not in st.session_state or st.session_state.x_test is None:
-                st.error("Test data not found!")
-            else:
-                with st.spinner("Generating explanation..."):
-                    try:
-                        # Debugging outputs
-                        st.write("### SHAP Debug Info")
-                        st.write(f"Model type: {type(st.session_state.trained_model).__name__}")
-                        st.write(f"Test data shape: {st.session_state.x_test.shape}")
+        else:
+            with st.spinner("Generating explanation..."):
+                try:
+                # Get sample data
+                    sample_data = st.session_state.x_test.iloc[:50]  # Use first 50 samples
+                
+                # Initialize appropriate explainer based on model type
+                    model_type = type(st.session_state.trained_model).__name__
+                
+                # SHAP explainer selection
+                    if model_type in ["RandomForestClassifier", "RandomForestRegressor",
+                                 "XGBClassifier", "XGBRegressor", 
+                                 "GradientBoostingClassifier", "GradientBoostingRegressor"]:
+                        explainer = shap.TreeExplainer(st.session_state.trained_model)
+                        shap_values = explainer.shap_values(sample_data)
+                    elif model_type in ["LogisticRegression", "LinearRegression"]:
+                        explainer = shap.LinearExplainer(st.session_state.trained_model, sample_data)
+                        shap_values = explainer.shap_values(sample_data)
+                    else:
+                    # Use KernelExplainer as fallback
+                        explainer = shap.KernelExplainer(st.session_state.trained_model.predict, sample_data)
+                        shap_values = explainer.shap_values(sample_data)
+                
+                # Visualization
+                    st.subheader(f"Model Explanation ({model_type})")
+                
+                # Summary plot
+                    fig1, ax1 = plt.subplots()
+                    shap.summary_plot(shap_values, sample_data, show=False)
+                    st.pyplot(fig1)
+                    plt.close(fig1)
+                
+                # Feature importance
+                    fig2, ax2 = plt.subplots()
+                    shap.summary_plot(shap_values, sample_data, plot_type="bar", show=False)
+                    st.pyplot(fig2)
+                    plt.close(fig2)
+                
+                # Individual prediction explanations
+                    st.markdown("### Individual Prediction Explanations")
+                    sample_idx = st.selectbox("Select sample to explain", range(len(sample_data)))
+                    fig3, ax3 = plt.subplots()
+                    shap.force_plot(explainer.expected_value, 
+                              shap_values[sample_idx,:], 
+                              sample_data.iloc[sample_idx,:], 
+                              show=False, matplotlib=True)
+                    st.pyplot(fig3)
+                    plt.close(fig3)
+                
+                # Decision plot
+                    st.markdown("### Decision Process Visualization")
+                    fig4, ax4 = plt.subplots()
+                    shap.decision_plot(explainer.expected_value, 
+                                 shap_values[sample_idx,:], 
+                                 sample_data.iloc[sample_idx,:], 
+                                 show=False)
+                    st.pyplot(fig4)
+                    plt.close(fig4)
+                
+                except Exception as e:
+                    st.error(f"Explanation failed: {str(e)}")
+                    st.markdown("""
+                **Common Solutions:**
+                - For non-tree models, try with smaller datasets
+                - Some models (like KNN) may not support SHAP explanations
+                - Consider permutation importance as alternative:
+                """)
+                
+                # Fallback to permutation importance
+                    from sklearn.inspection import permutation_importance
+                    with st.spinner("Calculating permutation importance..."):
+                        try:
+                            result = permutation_importance(st.session_state.trained_model,
+                                                      st.session_state.x_test,
+                                                      st.session_state.y_test,
+                                                      n_repeats=10,
+                                                      random_state=42)
+                            importance_df = pd.DataFrame({
+                                'features': st.session_state.x_test.columns,
+                                'importance_mean': result.importances_mean,
+                                'importance_std': result.importances_std
+                            }).sort_values('importance_mean', ascending=False)
                         
-                        # SHAP calculation
-                        sample_data = st.session_state.x_test.iloc[:10]
-                        explainer = shap.Explainer(st.session_state.trained_model)
-                        shap_values = explainer(sample_data)
+                            st.subheader("Permutation Importance")
+                            st.dataframe(importance_df)
                         
-                        # Visualization
-                        fig, ax = plt.subplots()
-                        shap.plots.beeswarm(shap_values, show=False)
-                        st.pyplot(fig)
-                        plt.close(fig)
+                            fig5, ax5 = plt.subplots()
+                            importance_df.plot.bar(x='features', y='importance_mean', 
+                                             yerr='importance_std', ax=ax5)
+                            st.pyplot(fig5)
                         
-                    except Exception as e:
-                        st.error(f"SHAP failed: {str(e)}")
-                        st.write("Common fixes:")
-                        st.write("- Install latest SHAP: `pip install --upgrade shap`")
-                        st.write("- For non-tree models, use smaller samples")
-                                        
-                # model_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trained_model")
-                # model_path = os.path.join(model_dir, f"{model_name}_v{model_version}.pkl")
-                # if os.path.exists(model_path):
-                #     with open(model_path, "rb") as f:
-                #         st.download_button("Download Trained Model", data=f.read(), file_name=f"{model_name}_v{model_version}.pkl", mime="application/octet-stream")
-                # else:
-                #     st.error("Model file not found!")
-
+                        except Exception as perm_error:
+                            st.error(f"Fallback explanation also failed: {str(perm_error)}")
                                 
 if __name__ == "__main__":
     run()
