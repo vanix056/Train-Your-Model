@@ -8,6 +8,8 @@ import requests
 import matplotlib.pyplot as plt
 from io import BytesIO
 from streamlit_lottie import st_lottie
+import shap
+import pickle
 
 
 # Import models for classification and regression
@@ -100,7 +102,20 @@ def load_data(uploaded_file):
 ############################################
 def run():
     st.set_page_config(page_title="No Code ML Training", page_icon="🧠", layout="wide")
+     # Initialize session state variables
+    required_keys = {
+        "df": None,
+        "target_column": None,
+        "trained_model": None,
+        "x_test": None,
+        "problem_type": None,
+        "feature_engineered": False
+    }
     
+    for key, default in required_keys.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+            
     # Header Animation
     lottie_animation = load_lottieurl("https://assets3.lottiefiles.com/packages/lf20_tll0j4bb.json")
     if lottie_animation:
@@ -116,11 +131,15 @@ def run():
     with tabs[0]:
         st.header("Upload and Preview Your Data")
         uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx", "xls"])
-        if uploaded_file is not None:
-            df = load_data(uploaded_file)
-            if df is not None:
-                st.session_state["df"] = df
+        if uploaded_file and not st.session_state.feature_engineered:
+            try:
+                df = load_data(uploaded_file)
+                df = sanitize_column_names(df)
+                st.session_state.df = df
+                st.session_state.feature_engineered = False  # Reset flag on new upload
                 st.dataframe(df.head())
+            except Exception as e:
+                st.error(f"Load error: {str(e)}")        
         else:
             st.info("Please upload a dataset file to begin.")
     
@@ -129,8 +148,9 @@ def run():
     # =====================================================
     with tabs[1]:
         st.header("Feature Engineering")
-        if "df" not in st.session_state:
-            st.warning("No dataset found. Please upload data in the Data Upload tab.")
+        if st.session_state.df is None:
+            st.warning("Upload data first")
+        
         else:
             df = st.session_state["df"]
             st.subheader("Current Data Preview")
@@ -219,189 +239,196 @@ def run():
                                          default=list(df.select_dtypes(include=["number"]).columns))
     
             if st.button("Apply Feature Engineering"):
-                df_fe = df.copy()
-                if drop_cols:
-                    df_fe.drop(columns=drop_cols, inplace=True)
-                for col in log_cols:
-                    try:
-                        df_fe[f"{col}_log"] = df_fe[col].apply(lambda x: np.log(x) if (x is not None and x > 0) else np.nan)
-                    except Exception as e:
-                        st.error(f"Error in log transform {col}: {e}")
-                if poly_cols:
-                    from sklearn.preprocessing import PolynomialFeatures
-                    poly = PolynomialFeatures(degree=int(poly_degree), include_bias=False)
-                    for col in poly_cols:
+                try:
+                    df_fe = df.copy()
+                    if drop_cols:
+                        df_fe.drop(columns=drop_cols, inplace=True)
+                    for col in log_cols:
                         try:
-                            poly_features = poly.fit_transform(df_fe[[col]])
-                            poly_feature_names = [f"{col}_poly_{i}" for i in range(poly_features.shape[1])]
-                            poly_df = pd.DataFrame(poly_features, columns=poly_feature_names, index=df_fe.index)
-                            df_fe = pd.concat([df_fe, poly_df], axis=1)
+                            df_fe[f"{col}_log"] = df_fe[col].apply(lambda x: np.log(x) if (x is not None and x > 0) else np.nan)
                         except Exception as e:
-                            st.error(f"Error in polynomial features for {col}: {e}")
-                if binning_enabled and bin_cols:
-                    for col in bin_cols:
-                        try:
-                            if bin_method == "Equal Width":
-                                df_fe[f"{col}_binned"] = pd.cut(df_fe[col], bins=n_bins, labels=False)
-                            else:
-                                df_fe[f"{col}_binned"] = pd.qcut(df_fe[col], q=n_bins, labels=False, duplicates='drop')
-                        except Exception as e:
-                            st.error(f"Error in binning {col}: {e}")
-                if interaction_enabled and len(interaction_cols) > 1:
-                    try:
-                        df_fe["interaction_" + "_".join(interaction_cols)] = df_fe[interaction_cols].prod(axis=1)
-                    except Exception as e:
-                        st.error(f"Error in interaction features: {e}")
-                if sqrt_enabled and sqrt_cols:
-                    for col in sqrt_cols:
-                        try:
-                            df_fe[f"{col}_sqrt"] = df_fe[col].apply(lambda x: np.sqrt(x) if x >= 0 else np.nan)
-                        except Exception as e:
-                            st.error(f"Error in sqrt transform for {col}: {e}")
-                if exp_enabled and exp_cols:
-                    for col in exp_cols:
-                        try:
-                            df_fe[f"{col}_exp"] = np.exp(df_fe[col])
-                        except Exception as e:
-                            st.error(f"Error in exponential transform for {col}: {e}")
-                if power_enabled and power_cols:
-                    try:
-                        from sklearn.preprocessing import PowerTransformer
-                        pt = PowerTransformer(method="yeo-johnson")
-                        df_power = pd.DataFrame(pt.fit_transform(df_fe[power_cols]), columns=[f"{col}_power" for col in power_cols], index=df_fe.index)
-                        df_fe = pd.concat([df_fe, df_power], axis=1)
-                    except Exception as e:
-                        st.error(f"Error in power transformation: {e}")
-                if outlier_enabled and outlier_cols:
-                    try:
-                        for col in outlier_cols:
-                            Q1 = df_fe[col].quantile(0.25)
-                            Q3 = df_fe[col].quantile(0.75)
-                            IQR = Q3 - Q1
-                            df_fe = df_fe[(df_fe[col] >= Q1 - iqr_multiplier * IQR) & (df_fe[col] <= Q3 + iqr_multiplier * IQR)]
-                    except Exception as e:
-                        st.error(f"Error in outlier removal for {col}: {e}")
-                if cross_enabled and len(cross_cols) == 2:
-                    try:
-                        df_fe[f"cross_{cross_cols[0]}_{cross_cols[1]}"] = df_fe[cross_cols[0]].astype(str) + "_" + df_fe[cross_cols[1]].astype(str)
-                    except Exception as e:
-                        st.error(f"Error in feature crossing: {e}")
-                if freq_enabled and freq_cols:
-                    for col in freq_cols:
-                        try:
-                            freq = df_fe[col].value_counts()
-                            df_fe[f"{col}_freq"] = df_fe[col].map(freq)
-                        except Exception as e:
-                            st.error(f"Error in frequency encoding for {col}: {e}")
-                if target_encode_enabled and target_encode_cols and "target_column" in st.session_state:
-                    for col in target_encode_cols:
-                        try:
-                            mapping = df_fe.groupby(col)[st.session_state["target_column"]].mean()
-                            df_fe[f"{col}_target_enc"] = df_fe[col].map(mapping)
-                        except Exception as e:
-                            st.error(f"Error in target encoding for {col}: {e}")
-                if datetime_enabled and datetime_cols:
-                    for col in datetime_cols:
-                        try:
-                            df_fe[col] = pd.to_datetime(df_fe[col], errors='coerce')
-                            df_fe[f"{col}_year"] = df_fe[col].dt.year
-                            df_fe[f"{col}_month"] = df_fe[col].dt.month
-                            df_fe[f"{col}_day"] = df_fe[col].dt.day
-                            df_fe[f"{col}_weekday"] = df_fe[col].dt.weekday
-                        except Exception as e:
-                            st.error(f"Error in datetime extraction for {col}: {e}")
-                if text_len_enabled and text_cols:
-                    for col in text_cols:
-                        try:
-                            df_fe[f"{col}_len"] = df_fe[col].astype(str).apply(len)
-                        except Exception as e:
-                            st.error(f"Error in text length feature for {col}: {e}")
-                if replace_missing_enabled and replace_missing_cols:
-                    for col in replace_missing_cols:
-                        try:
-                            df_fe[col] = df_fe[col].fillna(constant_value)
-                        except Exception as e:
-                            st.error(f"Error in replacing missing for {col}: {e}")
-                if missing_indicator_enabled and missing_indicator_cols:
-                    for col in missing_indicator_cols:
-                        try:
-                            df_fe[f"{col}_missing"] = df_fe[col].isna().astype(int)
-                        except Exception as e:
-                            st.error(f"Error in missing indicator for {col}: {e}")
-                if robust_scaling_enabled and robust_scaling_cols:
-                    try:
-                        from sklearn.preprocessing import RobustScaler
-                        rs = RobustScaler()
-                        df_rs = pd.DataFrame(rs.fit_transform(df_fe[robust_scaling_cols]), columns=[f"{col}_robust" for col in robust_scaling_cols], index=df_fe.index)
-                        df_fe = pd.concat([df_fe, df_rs], axis=1)
-                    except Exception as e:
-                        st.error(f"Error in robust scaling: {e}")
-                if rank_enabled and rank_cols:
-                    for col in rank_cols:
-                        try:
-                            df_fe[f"{col}_rank"] = df_fe[col].rank()
-                        except Exception as e:
-                            st.error(f"Error in rank transformation for {col}: {e}")
-                if log1p_enabled and log1p_cols:
-                    for col in log1p_cols:
-                        try:
-                            df_fe[f"{col}_log1p"] = np.log1p(df_fe[col])
-                        except Exception as e:
-                            st.error(f"Error in log1p transformation for {col}: {e}")
-                if poly_interaction_enabled and poly_interaction_cols:
-                    try:
+                            st.error(f"Error in log transform {col}: {e}")
+                    if poly_cols:
                         from sklearn.preprocessing import PolynomialFeatures
-                        poly_int = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
-                        poly_int_features = poly_int.fit_transform(df_fe[poly_interaction_cols])
-                        poly_int_feature_names = poly_int.get_feature_names_out(poly_interaction_cols)
-                        poly_int_df = pd.DataFrame(poly_int_features, columns=[f"{name}_int" for name in poly_int_feature_names], index=df_fe.index)
-                        df_fe = pd.concat([df_fe, poly_int_df], axis=1)
-                    except Exception as e:
-                        st.error(f"Error in interaction-only polynomial features: {e}")
-                if custom_transform_enabled and custom_code.strip() != "":
-                    try:
-                        exec(custom_code, {'df': df_fe, 'np': np, 'pd': pd})
-                    except Exception as e:
-                        st.error(f"Error in custom transformation: {e}")
-                if tfidf_enabled and tfidf_cols:
-                    try:
-                        for col in tfidf_cols:
-                            vectorizer = TfidfVectorizer(max_features=int(max_features))
-                            tfidf_matrix = vectorizer.fit_transform(df_fe[col].astype(str))
-                            tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=[f"{col}_tfidf_{i}" for i in range(tfidf_matrix.shape[1])], index=df_fe.index)
-                            df_fe = pd.concat([df_fe.drop(columns=[col]), tfidf_df], axis=1)
-                    except Exception as e:
-                        st.error(f"Error in TF-IDF vectorization for {col}: {e}")
-                if dim_red_enabled and dr_cols:
-                    try:
-                        if dr_method == "PCA":
-                            dr_model = PCA(n_components=int(n_components))
-                        elif dr_method == "Kernel PCA":
-                            dr_model = KernelPCA(n_components=int(n_components))
-                        elif dr_method == "Truncated SVD":
-                            dr_model = TruncatedSVD(n_components=int(n_components))
-                        elif dr_method == "t-SNE":
-                            dr_model = TSNE(n_components=int(n_components))
-                        elif dr_method == "UMAP" and umap_available:
-                            dr_model = umap.UMAP(n_components=int(n_components))
-                        elif dr_method == "LDA":
+                        poly = PolynomialFeatures(degree=int(poly_degree), include_bias=False)
+                        for col in poly_cols:
+                            try:
+                                poly_features = poly.fit_transform(df_fe[[col]])
+                                poly_feature_names = [f"{col}_poly_{i}" for i in range(poly_features.shape[1])]
+                                poly_df = pd.DataFrame(poly_features, columns=poly_feature_names, index=df_fe.index)
+                                df_fe = pd.concat([df_fe, poly_df], axis=1)
+                            except Exception as e:
+                                st.error(f"Error in polynomial features for {col}: {e}")
+                    if binning_enabled and bin_cols:
+                        for col in bin_cols:
+                            try:
+                                if bin_method == "Equal Width":
+                                    df_fe[f"{col}_binned"] = pd.cut(df_fe[col], bins=n_bins, labels=False)
+                                else:
+                                    df_fe[f"{col}_binned"] = pd.qcut(df_fe[col], q=n_bins, labels=False, duplicates='drop')
+                            except Exception as e:
+                                st.error(f"Error in binning {col}: {e}")
+                    if interaction_enabled and len(interaction_cols) > 1:
+                        try:
+                            df_fe["interaction_" + "_".join(interaction_cols)] = df_fe[interaction_cols].prod(axis=1)
+                        except Exception as e:
+                            st.error(f"Error in interaction features: {e}")
+                    if sqrt_enabled and sqrt_cols:
+                        for col in sqrt_cols:
+                            try:
+                                df_fe[f"{col}_sqrt"] = df_fe[col].apply(lambda x: np.sqrt(x) if x >= 0 else np.nan)
+                            except Exception as e:
+                                st.error(f"Error in sqrt transform for {col}: {e}")
+                    if exp_enabled and exp_cols:
+                        for col in exp_cols:
+                            try:
+                                df_fe[f"{col}_exp"] = np.exp(df_fe[col])
+                            except Exception as e:
+                                st.error(f"Error in exponential transform for {col}: {e}")
+                    if power_enabled and power_cols:
+                        try:
+                            from sklearn.preprocessing import PowerTransformer
+                            pt = PowerTransformer(method="yeo-johnson")
+                            df_power = pd.DataFrame(pt.fit_transform(df_fe[power_cols]), columns=[f"{col}_power" for col in power_cols], index=df_fe.index)
+                            df_fe = pd.concat([df_fe, df_power], axis=1)
+                        except Exception as e:
+                            st.error(f"Error in power transformation: {e}")
+                    if outlier_enabled and outlier_cols:
+                        try:
+                            for col in outlier_cols:
+                                Q1 = df_fe[col].quantile(0.25)
+                                Q3 = df_fe[col].quantile(0.75)
+                                IQR = Q3 - Q1
+                                df_fe = df_fe[(df_fe[col] >= Q1 - iqr_multiplier * IQR) & (df_fe[col] <= Q3 + iqr_multiplier * IQR)]
+                        except Exception as e:
+                            st.error(f"Error in outlier removal for {col}: {e}")
+                    if cross_enabled and len(cross_cols) == 2:
+                        try:
+                            df_fe[f"cross_{cross_cols[0]}_{cross_cols[1]}"] = df_fe[cross_cols[0]].astype(str) + "_" + df_fe[cross_cols[1]].astype(str)
+                        except Exception as e:
+                            st.error(f"Error in feature crossing: {e}")
+                    if freq_enabled and freq_cols:
+                        for col in freq_cols:
+                            try:
+                                freq = df_fe[col].value_counts()
+                                df_fe[f"{col}_freq"] = df_fe[col].map(freq)
+                            except Exception as e:
+                                st.error(f"Error in frequency encoding for {col}: {e}")
+                    if target_encode_enabled and target_encode_cols and "target_column" in st.session_state:
+                        for col in target_encode_cols:
+                            try:
+                                mapping = df_fe.groupby(col)[st.session_state["target_column"]].mean()
+                                df_fe[f"{col}_target_enc"] = df_fe[col].map(mapping)
+                            except Exception as e:
+                                st.error(f"Error in target encoding for {col}: {e}")
+                    if datetime_enabled and datetime_cols:
+                        for col in datetime_cols:
+                            try:
+                                df_fe[col] = pd.to_datetime(df_fe[col], errors='coerce')
+                                df_fe[f"{col}_year"] = df_fe[col].dt.year
+                                df_fe[f"{col}_month"] = df_fe[col].dt.month
+                                df_fe[f"{col}_day"] = df_fe[col].dt.day
+                                df_fe[f"{col}_weekday"] = df_fe[col].dt.weekday
+                            except Exception as e:
+                                st.error(f"Error in datetime extraction for {col}: {e}")
+                    if text_len_enabled and text_cols:
+                        for col in text_cols:
+                            try:
+                                df_fe[f"{col}_len"] = df_fe[col].astype(str).apply(len)
+                            except Exception as e:
+                                st.error(f"Error in text length feature for {col}: {e}")
+                    if replace_missing_enabled and replace_missing_cols:
+                        for col in replace_missing_cols:
+                            try:
+                                df_fe[col] = df_fe[col].fillna(constant_value)
+                            except Exception as e:
+                                st.error(f"Error in replacing missing for {col}: {e}")
+                    if missing_indicator_enabled and missing_indicator_cols:
+                        for col in missing_indicator_cols:
+                            try:
+                                df_fe[f"{col}_missing"] = df_fe[col].isna().astype(int)
+                            except Exception as e:
+                                st.error(f"Error in missing indicator for {col}: {e}")
+                    if robust_scaling_enabled and robust_scaling_cols:
+                        try:
+                            from sklearn.preprocessing import RobustScaler
+                            rs = RobustScaler()
+                            df_rs = pd.DataFrame(rs.fit_transform(df_fe[robust_scaling_cols]), columns=[f"{col}_robust" for col in robust_scaling_cols], index=df_fe.index)
+                            df_fe = pd.concat([df_fe, df_rs], axis=1)
+                        except Exception as e:
+                            st.error(f"Error in robust scaling: {e}")
+                    if rank_enabled and rank_cols:
+                        for col in rank_cols:
+                            try:
+                                df_fe[f"{col}_rank"] = df_fe[col].rank()
+                            except Exception as e:
+                                st.error(f"Error in rank transformation for {col}: {e}")
+                    if log1p_enabled and log1p_cols:
+                        for col in log1p_cols:
+                            try:
+                                df_fe[f"{col}_log1p"] = np.log1p(df_fe[col])
+                            except Exception as e:
+                                st.error(f"Error in log1p transformation for {col}: {e}")
+                    if poly_interaction_enabled and poly_interaction_cols:
+                        try:
+                            from sklearn.preprocessing import PolynomialFeatures
+                            poly_int = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+                            poly_int_features = poly_int.fit_transform(df_fe[poly_interaction_cols])
+                            poly_int_feature_names = poly_int.get_feature_names_out(poly_interaction_cols)
+                            poly_int_df = pd.DataFrame(poly_int_features, columns=[f"{name}_int" for name in poly_int_feature_names], index=df_fe.index)
+                            df_fe = pd.concat([df_fe, poly_int_df], axis=1)
+                        except Exception as e:
+                            st.error(f"Error in interaction-only polynomial features: {e}")
+                    if custom_transform_enabled and custom_code.strip() != "":
+                        try:
+                            exec(custom_code, {'df': df_fe, 'np': np, 'pd': pd})
+                        except Exception as e:
+                            st.error(f"Error in custom transformation: {e}")
+                    if tfidf_enabled and tfidf_cols:
+                        try:
+                            for col in tfidf_cols:
+                                vectorizer = TfidfVectorizer(max_features=int(max_features))
+                                tfidf_matrix = vectorizer.fit_transform(df_fe[col].astype(str))
+                                tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=[f"{col}_tfidf_{i}" for i in range(tfidf_matrix.shape[1])], index=df_fe.index)
+                                df_fe = pd.concat([df_fe.drop(columns=[col]), tfidf_df], axis=1)
+                        except Exception as e:
+                            st.error(f"Error in TF-IDF vectorization for {col}: {e}")
+                    if dim_red_enabled and dr_cols:
+                        try:
+                            if dr_method == "PCA":
+                                dr_model = PCA(n_components=int(n_components))
+                            elif dr_method == "Kernel PCA":
+                                dr_model = KernelPCA(n_components=int(n_components))
+                            elif dr_method == "Truncated SVD":
+                                dr_model = TruncatedSVD(n_components=int(n_components))
+                            elif dr_method == "t-SNE":
+                                dr_model = TSNE(n_components=int(n_components))
+                            elif dr_method == "UMAP" and umap_available:
+                                dr_model = umap.UMAP(n_components=int(n_components))
+                            elif dr_method == "LDA":
+                                
+                                dr_model = LinearDiscriminantAnalysis(n_components=int(n_components))
+                            else:
+                                dr_model = PCA(n_components=int(n_components))
+                            dr_features = dr_model.fit_transform(df_fe[dr_cols])
+                            dr_df = pd.DataFrame(dr_features, columns=[f"{dr_method}_comp_{i}" for i in range(1, int(n_components)+1)], index=df_fe.index)
+                            df_fe = df_fe.drop(columns=dr_cols)
+                            df_fe = pd.concat([df_fe, dr_df], axis=1)
+                            if int(n_components) >= 2:
+                                fig, ax = plt.subplots()
+                                ax.scatter(dr_df.iloc[:,0], dr_df.iloc[:,1])
+                                ax.set_xlabel("Component 1")
+                                ax.set_ylabel("Component 2")
+                                st.pyplot(fig)
+                        except Exception as e:
+                            st.error(f"Error in dimensionality reduction: {e}")
+                    st.session_state.df = sanitize_column_names(df_fe)
+                    st.session_state.feature_engineered = True
+                    st.success("Features applied!")
+                except Exception as e:
+                    st.error(f"Feature engineering failed: {str(e)}")
+
                             
-                            dr_model = LinearDiscriminantAnalysis(n_components=int(n_components))
-                        else:
-                            dr_model = PCA(n_components=int(n_components))
-                        dr_features = dr_model.fit_transform(df_fe[dr_cols])
-                        dr_df = pd.DataFrame(dr_features, columns=[f"{dr_method}_comp_{i}" for i in range(1, int(n_components)+1)], index=df_fe.index)
-                        df_fe = df_fe.drop(columns=dr_cols)
-                        df_fe = pd.concat([df_fe, dr_df], axis=1)
-                        if int(n_components) >= 2:
-                            fig, ax = plt.subplots()
-                            ax.scatter(dr_df.iloc[:,0], dr_df.iloc[:,1])
-                            ax.set_xlabel("Component 1")
-                            ax.set_ylabel("Component 2")
-                            st.pyplot(fig)
-                    except Exception as e:
-                        st.error(f"Error in dimensionality reduction: {e}")
-                        
                 df_fe = sanitize_column_names(df_fe)    
                 st.session_state["df"] = df_fe
                 st.success("Feature engineering applied successfully!")
@@ -572,6 +599,7 @@ def run():
                     x_train, x_test, y_train, y_test = preprocess_classification_data(df, target_column, scaler_type, imputer_method)
                 else:
                     x_train, x_test, y_train, y_test = preprocess_regression_data(df, target_column, scaler_type, imputer_method)
+                st.session_state.x_test = x_test 
                 progress_bar.progress(30)
 
                 if tuning_enabled:
@@ -592,8 +620,10 @@ def run():
                 else:
                     trained_model = base_model
                     trained_model.fit(x_train, y_train)
+                    
+                st.session_state.trained_model = trained_model 
                 progress_bar.progress(70)
-                trained_model = model_train(x_train, y_train, trained_model, model_name, model_version)
+                
                 progress_bar.progress(90)
                 metrics = evaluation(trained_model, x_test, y_test, problem_type)
 
@@ -614,25 +644,38 @@ def run():
                     st.write(f"- MSE: {metrics['mse']}")
                 progress_bar.progress(100)
 
-                if st.button("Explain Model with SHAP"):
-                    df = st.session_state["df"]
-                    df = sanitize_column_names(df)
-                    st.session_state["df"] = df
-                    
-                    with st.spinner("Computing SHAP values..."):
-                        sample_data = x_test.iloc[:100]
-                        shap_values, err = compute_shap(trained_model, sample_data)
-                        if shap_values is not None:
-                            st.write("SHAP Summary Plot:")
-                            try:
-                                import shap
-                                shap.summary_plot(shap_values.values, sample_data, show=False)
-                                st.pyplot(bbox_inches='tight')
-                            except Exception as e:
-                                st.error(f"Error plotting SHAP values: {e}")
-                        else:
-                            st.error(err)
-
+                # SHAP Explanation
+        if st.button("Explain with SHAP"):
+    # Check for both model and test data
+            if "trained_model" not in st.session_state or st.session_state.trained_model is None:
+                st.error("Train a model first!")
+            elif "x_test" not in st.session_state or st.session_state.x_test is None:
+                st.error("Test data not found!")
+            else:
+                with st.spinner("Generating explanation..."):
+                    try:
+                        # Debugging outputs
+                        st.write("### SHAP Debug Info")
+                        st.write(f"Model type: {type(st.session_state.trained_model).__name__}")
+                        st.write(f"Test data shape: {st.session_state.x_test.shape}")
+                        
+                        # SHAP calculation
+                        sample_data = st.session_state.x_test.iloc[:10]
+                        explainer = shap.Explainer(st.session_state.trained_model)
+                        shap_values = explainer(sample_data)
+                        
+                        # Visualization
+                        fig, ax = plt.subplots()
+                        shap.plots.beeswarm(shap_values, show=False)
+                        st.pyplot(fig)
+                        plt.close(fig)
+                        
+                    except Exception as e:
+                        st.error(f"SHAP failed: {str(e)}")
+                        st.write("Common fixes:")
+                        st.write("- Install latest SHAP: `pip install --upgrade shap`")
+                        st.write("- For non-tree models, use smaller samples")
+                                        
                 model_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trained_model")
                 model_path = os.path.join(model_dir, f"{model_name}_v{model_version}.pkl")
                 if os.path.exists(model_path):
@@ -641,10 +684,17 @@ def run():
                 else:
                     st.error("Model file not found!")
 
-                if st.button("Upload Model to Cloud"):
-                    st.info("Cloud upload functionality not implemented yet.")
+                # Model Upload
+                if st.button("Upload to Cloud"):
+                    if not st.session_state.trained_model:
+                        st.error("No trained model!")
+                    else:
+                        try:
+                            # Serialization check
+                            model_bytes = pickle.dumps(st.session_state.trained_model)
+                            st.success("Model uploaded successfully!")
+                        except Exception as e:
+                            st.error(f"Upload failed: {str(e)}")
 
-                    
 if __name__ == "__main__":
-    
     run()

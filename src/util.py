@@ -12,6 +12,7 @@ from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.metrics import accuracy_score, r2_score, confusion_matrix, mean_absolute_error, mean_squared_error
 import matplotlib.pyplot as plt
 
+
 # Set working directories (adjust as needed)
 working_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(working_dir)
@@ -259,11 +260,19 @@ def tune_model(x_train, y_train, model, param_grid, search_method="grid", cv=5, 
 ############################################
 # SHAP Explanation Function
 ############################################
-def compute_shap(model, x_sample):
+def compute_shap(model, sample_data):
     try:
-        import shap
-    except ImportError:
-        return None, "SHAP not installed"
-    explainer = shap.Explainer(model.predict, x_sample)
-    shap_values = explainer(x_sample)
-    return shap_values, None
+        import shap  # Check if SHAP is installed
+        
+        # Use model-agnostic KernelExplainer if TreeExplainer fails
+        try:
+            explainer = shap.TreeExplainer(model)
+        except:
+            # Fallback to KernelExplainer
+            explainer = shap.KernelExplainer(model.predict, sample_data)
+        
+        shap_values = explainer(sample_data)
+        return shap_values, None
+    
+    except Exception as e:
+        return None, f"SHAP Error: {str(e)}. Ensure SHAP is installed (pip install shap)."
