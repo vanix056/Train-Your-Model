@@ -168,5 +168,5 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Author
 
-Developed and maintained by **[MAbdullahWaqar](https://github.com/MAbdullahWaqar)**.  
+Developed and maintained by **[Muhammad Abdullah Waqar](https://github.com/MAbdullahWaqar)**.  
 Contributions and feedback are welcome via GitHub Issues and Pull Requests.
