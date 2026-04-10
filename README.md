@@ -41,7 +41,7 @@
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/vanix056/Train-Your-Model.git
+git clone https://github.com/MAbdullahWaqar/Train-Your-Model.git
 cd Train-Your-Model
 
 # 2. (Optional) Create and activate a virtual environment
@@ -168,5 +168,5 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Author
 
-Developed and maintained by **[vanix056](https://github.com/vanix056)**.  
+Developed and maintained by **[MAbdullahWaqar](https://github.com/MAbdullahWaqar)**.  
 Contributions and feedback are welcome via GitHub Issues and Pull Requests.
